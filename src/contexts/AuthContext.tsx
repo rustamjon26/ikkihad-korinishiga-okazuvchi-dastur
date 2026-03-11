@@ -1,126 +1,122 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { supabase } from '@/db/supabase';
-import type { User } from '@supabase/supabase-js';
-import type { Profile } from '@/types/types';
-import { toast } from 'sonner';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export async function getProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .maybeSingle();
+export type Role = 'USER' | 'ADMIN';
 
-  if (error) {
-    console.error('获取用户信息失败:', error);
-    return null;
-  }
-  return data;
+export interface User {
+  id: string;
+  email: string;
+  fullName: string;
+  role: Role;
+  isActive: boolean;
+  createdAt: string;
 }
+
 interface AuthContextType {
   user: User | null;
-  profile: Profile | null;
   loading: boolean;
-  signInWithUsername: (username: string, password: string) => Promise<{ error: Error | null }>;
-  signUpWithUsername: (username: string, password: string) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  login: (email: string, fullName: string, role?: Role) => void;
+  register: (email: string, fullName: string) => void;
+  logout: () => void;
+  updateProfile: (fullName: string, email: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+// Helper for activity logging
+const logActivity = (type: string, desc: string, user?: User | null) => {
+  const logs = JSON.parse(localStorage.getItem('app_activity_logs') || '[]');
+  logs.unshift({
+    id: crypto.randomUUID(),
+    userId: user?.id || 'system',
+    userName: user?.fullName || 'Guest',
+    actionType: type,
+    description: desc,
+    createdAt: new Date().toISOString(),
+  });
+  localStorage.setItem('app_activity_logs', JSON.stringify(logs.slice(0, 100)));
+};
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshProfile = async () => {
-    if (!user) {
-      setProfile(null);
-      return;
-    }
-
-    const profileData = await getProfile(user.id);
-    setProfile(profileData);
-  };
-
   useEffect(() => {
-    supabase
-      .auth
-      .getSession()
-      .then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          getProfile(session.user.id).then(setProfile);
-        }
-      })
-      .catch(error => {
-        toast.error(`获取用户信息失败: ${error.message}`);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-
-    // In this function, do NOT use any await calls. Use `.then()` instead to avoid deadlocks.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        getProfile(session.user.id).then(setProfile);
-      } else {
-        setProfile(null);
+    const savedUser = localStorage.getItem('app_user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error("Failed to parse user", e);
       }
-    });
-
-    return () => subscription.unsubscribe();
+    }
+    setLoading(false);
   }, []);
 
-  const signInWithUsername = async (username: string, password: string) => {
-    try {
-      const email = `${username}@miaoda.com`;
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-      return { error: null };
-    } catch (error) {
-      return { error: error as Error };
-    }
+  const login = (email: string, fullName: string, role: Role = 'USER') => {
+    const finalRole = email.includes('admin') ? 'ADMIN' : role;
+    const newUser: User = {
+      id: crypto.randomUUID(),
+      email,
+      fullName,
+      role: finalRole,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+    setUser(newUser);
+    localStorage.setItem('app_user', JSON.stringify(newUser));
+    logActivity('USER_LOGGED_IN', `User ${fullName} logged in`, newUser);
   };
 
-  const signUpWithUsername = async (username: string, password: string) => {
-    try {
-      const email = `${username}@miaoda.com`;
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+  const register = (email: string, fullName: string) => {
+    const newUser: User = {
+      id: crypto.randomUUID(),
+      email,
+      fullName,
+      role: 'USER',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+    setUser(newUser);
+    localStorage.setItem('app_user', JSON.stringify(newUser));
+    
+    const users = JSON.parse(localStorage.getItem('app_users_list') || '[]');
+    users.push(newUser);
+    localStorage.setItem('app_users_list', JSON.stringify(users));
 
-      if (error) throw error;
-      return { error: null };
-    } catch (error) {
-      return { error: error as Error };
-    }
+    logActivity('USER_REGISTERED', `New user ${fullName} registered`, newUser);
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const logout = () => {
+    if (user) logActivity('USER_LOGGED_OUT', `User ${user.fullName} logged out`, user);
     setUser(null);
-    setProfile(null);
+    localStorage.removeItem('app_user');
+  };
+
+  const updateProfile = (fullName: string, email: string) => {
+    if (!user) return;
+    const updatedUser = { ...user, fullName, email };
+    setUser(updatedUser);
+    localStorage.setItem('app_user', JSON.stringify(updatedUser));
+
+    const users = JSON.parse(localStorage.getItem('app_users_list') || '[]');
+    const index = users.findIndex((u: User) => u.id === user.id);
+    if (index !== -1) {
+      users[index] = updatedUser;
+      localStorage.setItem('app_users_list', JSON.stringify(users));
+    }
+
+    logActivity('PROFILE_UPDATED', `User ${fullName} updated profile`, updatedUser);
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signInWithUsername, signUpWithUsername, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );
-}
+};
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
-}
+};
