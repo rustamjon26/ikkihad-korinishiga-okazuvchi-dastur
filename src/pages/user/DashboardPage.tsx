@@ -88,10 +88,10 @@ const DashboardPage: React.FC = () => {
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">Analitik geometriyadagi eng keng tarqalgan egri chiziqlar misollari:</p>
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" className="justify-start" onClick={() => toast.info('Converter page orqali sinab ko\'ring')}>Aylana (Circle)</Button>
-                <Button variant="outline" className="justify-start" onClick={() => toast.info('Converter page orqali sinab ko\'ring')}>Ellips (Ellipse)</Button>
-                <Button variant="outline" className="justify-start" onClick={() => toast.info('Converter page orqali sinab ko\'ring')}>Parabola (Parabola)</Button>
-                <Button variant="outline" className="justify-start" onClick={() => toast.info('Converter page orqali sinab ko\'ring')}>Giperbola (Hyperbola)</Button>
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Converter page orqali sinab ko\'ring')}>Chiziqli (Linear)</Button>
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Converter page orqali sinab ko\'ring')}>Kvadratik (Quadratic)</Button>
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Converter page orqali sinab ko\'ring')}>Eksponensial (Exponential)</Button>
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Converter page orqali sinab ko\'ring')}>Konik shakllar (Conics)</Button>
               </div>
             </CardContent>
           </Card>

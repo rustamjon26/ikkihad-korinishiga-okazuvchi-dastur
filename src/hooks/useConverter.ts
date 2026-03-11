@@ -30,49 +30,56 @@ export const useConverter = () => {
       // Substitution: x = (z + zc)/2, y = (z - zc)/(2i)
       // Note: zc is complex conjugate (z-bar)
       
+      // Primary: Function form y = f(x)
+      // Result form: (z - z̄)/(2i) = f((z + z̄)/2)
+      
       const substitutionFormulas = [
         "x = (z + z̄) / 2",
-        "y = (z - z̄) / (2i)"
+        "y = (z - z̄) / (2i)",
+        "Goal form: (z - z̄) / (2i) = f((z + z̄) / 2)"
       ];
 
       const steps = [
         "1. Identify the Cartesian equation: " + equation,
-        "2. Apply complex variable substitution: x = (z + z̄)/2 and y = (z - z̄)/(2i)",
-        "3. Replace variables in the equation and perform algebraic expansion.",
-        "4. Simplify the expression using complex number properties (i² = -1).",
-        "5. Final result in terms of z and z̄ (z-conjugate)."
+        "2. Recognize the function form y = f(x).",
+        "3. Substitute y = (z - z̄) / (2i).",
+        "4. Substitute x = (z + z̄) / 2 inside the function f(x).",
+        "5. Final result in terms of z and z̄ (complex conjugate)."
       ];
 
-      // Symbolic conversion logic (simplified for educational purpose)
-      // Since real symbolic simplification in JS is hard, we provide accurate pre-defined results for standard forms
-      // and generic string replacement for others.
-      
       let transformed = "";
       
-      // Common forms detection
-      const eqLower = equation.toLowerCase().replace(/\s/g, '');
-      
-      if (eqLower.match(/^x\^2\+y\^2=([0-9a-z\^]+)$/)) {
-        const r2 = eqLower.split('=')[1];
-        transformed = `z · z̄ = ${r2}`;
-      } else if (eqLower.match(/^x\^2\/([0-9a-z\^]+)\+y\^2\/([0-9a-z\^]+)=1$/)) {
-        const parts = eqLower.match(/^x\^2\/([0-9a-z\^]+)\+y\^2\/([0-9a-z\^]+)=1$/);
-        const a2 = parts![1];
-        const b2 = parts![2];
-        transformed = `((${b2})·(z + z̄)² + (${a2})·(z - z̄)²) / (4·${a2}·${b2}) = 1`;
-      } else if (eqLower.match(/^y=([0-9a-z\^]+)x\^2$/)) {
-        const a = eqLower.match(/^y=([0-9a-z\^]+)x\^2$/)![1];
-        transformed = `(z - z̄) = ${a}·i·(z + z̄)² / 2`;
-      } else if (eqLower.match(/^x\^2\/([0-9a-z\^]+)-y\^2\/([0-9a-z\^]+)=1$/)) {
-        const parts = eqLower.match(/^x\^2\/([0-9a-z\^]+)-y\^2\/([0-9a-z\^]+)=1$/);
-        const a2 = parts![1];
-        const b2 = parts![2];
-        transformed = `((${b2})·(z + z̄)² - (${a2})·(z - z̄)²) / (4·${a2}·${b2}) = 1`;
+      // Check for y = f(x) form
+      const eqNoSpace = equation.replace(/\s/g, '');
+      if (eqNoSpace.includes('y=')) {
+        const parts = equation.split('=');
+        // Find the part that contains 'y'
+        let yPart = "";
+        let fPart = "";
+        if (parts[0].trim() === 'y') {
+          yPart = parts[0].trim();
+          fPart = parts[1].trim();
+        } else if (parts[1].trim() === 'y') {
+          yPart = parts[1].trim();
+          fPart = parts[0].trim();
+        }
+
+        if (yPart === 'y') {
+          // Transform f(x)
+          const transformedF = fPart.replace(/x/g, '((z + z̄)/2)');
+          transformed = `(z - z̄)/(2i) = ${transformedF}`;
+        } else {
+          // Fallback if y is embedded (e.g., y - x^2 = 0)
+          transformed = equation
+            .replace(/y/g, '((z - z̄)/(2i))')
+            .replace(/x/g, '((z + z̄)/2)');
+        }
       } else {
-        // Generic substitution
-        transformed = leftSide
-          .replace(/x/g, '((z + z̄)/2)')
-          .replace(/y/g, '((z - z̄)/(2i))') + " = " + rightSide;
+        // Handle conic forms or general second-order curves
+        // Generic substitution for non-function forms
+        transformed = equation
+          .replace(/y/g, '((z - z̄)/(2i))')
+          .replace(/x/g, '((z + z̄)/2)');
       }
 
       setLoading(false);

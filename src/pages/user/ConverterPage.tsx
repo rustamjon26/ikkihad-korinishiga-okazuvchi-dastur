@@ -18,10 +18,11 @@ const ConverterPage: React.FC = () => {
   const [result, setResult] = React.useState<any>(null);
 
   const examples = [
+    { name: 'Linear', eq: 'y = 2x + 3' },
+    { name: 'Quadratic', eq: 'y = x^2' },
+    { name: 'Sinusoidal', eq: 'y = sin(x)' },
+    { name: 'Exponential', eq: 'y = e^x' },
     { name: 'Circle', eq: 'x^2 + y^2 = 25' },
-    { name: 'Ellipse', eq: 'x^2/16 + y^2/9 = 1' },
-    { name: 'Parabola', eq: 'y = 2x^2' },
-    { name: 'Hyperbola', eq: 'x^2/4 - y^2/9 = 1' },
   ];
 
   const handleConvert = () => {
