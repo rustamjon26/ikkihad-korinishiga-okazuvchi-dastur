@@ -1,33 +1,40 @@
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { toast } from 'sonner';
+import React from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { toast } from "sonner";
 
 const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      toast.error('Please fill all fields');
+      toast.error("Iltimos, barcha maydonlarni toʻldiring");
       return;
     }
     // Simple demo logic
-    login(email, email.split('@')[0]);
-    toast.success('Login successful!');
-    if (email.includes('admin')) {
-      navigate('/admin');
+    login(email, email.split("@")[0]);
+    toast.success("Muvaffaqiyatli kirdingiz!");
+    if (email.includes("admin")) {
+      navigate("/admin");
     } else {
-      navigate('/dashboard');
+      navigate("/dashboard");
     }
   };
 
@@ -35,24 +42,44 @@ const LoginPage: React.FC = () => {
     <div className="flex items-center justify-center min-h-screen bg-gradient-primary p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">{t('nav.login')}</CardTitle>
-          <CardDescription>Enter your email and password to access your account</CardDescription>
+          <CardTitle className="text-2xl font-bold">{t("nav.login")}</CardTitle>
+          <CardDescription>
+            Hisobingizga kirish uchun email va parolingizni kiriting
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">{t('auth.email')}</Label>
-              <Input id="email" type="email" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+              <Label htmlFor="email">{t("auth.email")}</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="user@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">{t('auth.password')}</Label>
-              <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+              <Label htmlFor="password">{t("auth.password")}</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
             </div>
-            <Button type="submit" className="w-full">{t('auth.login')}</Button>
+            <Button type="submit" className="w-full">
+              {t("auth.login")}
+            </Button>
           </form>
         </CardContent>
         <CardFooter className="flex justify-center flex-wrap gap-2 text-sm text-muted-foreground">
-          Don't have an account? <Link to="/register" className="text-primary hover:underline">{t('nav.register')}</Link>
+          Hisobingiz yoʻqmi?{" "}
+          <Link to="/register" className="text-primary hover:underline">
+            {t("nav.register")}
+          </Link>
         </CardFooter>
       </Card>
     </div>
