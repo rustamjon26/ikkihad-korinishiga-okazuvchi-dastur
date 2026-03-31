@@ -21,7 +21,7 @@ async function getMath() {
 // Try simplification with mathjs rules safely
 async function trySimplify(expr: string): Promise<string> {
   // Prevent freezing on very long mathematical strings
-  if (expr.length > 200) {
+  if (expr.length > 500) {
     return expr;
   }
 
@@ -150,6 +150,7 @@ function normalizeInput(eq: string): string {
   // Replace ^ with ** for mathjs if needed
   // Handle implicit multiplication: 2x -> 2*x, ax -> a*x
   result = result.replace(/(\d)([a-zA-Z])/g, "$1*$2");
+  result = result.replace(/(\d)\(/g, "$1*(");
   // Handle )( -> )*(
   result = result.replace(/\)\(/g, ")*(");
   // Handle )(x -> )*(x
@@ -268,17 +269,43 @@ async function convertGeneric(equation: string): Promise<{
   let transformedRight: string;
   const extraSteps: string[] = [];
 
+  const replaceVars = (expr: string) => {
+    let res = "";
+    let i = 0;
+    while (i < expr.length) {
+      if (expr.substring(i, i+3) === 'exp') {
+        res += 'exp';
+        i += 3;
+      } else if (expr.substring(i, i+3) === 'sin') {
+        res += 'sin';
+        i += 3;
+      } else if (expr.substring(i, i+3) === 'cos') {
+        res += 'cos';
+        i += 3;
+      } else if (expr.substring(i, i+3) === 'tan') {
+        res += 'tan';
+        i += 3;
+      } else if (expr[i] === 'x') {
+        res += "((z+z̄)/2)";
+        i++;
+      } else if (expr[i] === 'y') {
+        res += "((z-z̄)/2i)";
+        i++;
+      } else {
+        res += expr[i];
+        i++;
+      }
+    }
+    return res;
+  };
+
   // Protect against overly massive equations to avoid UI freeze
   if (equation.length > 300) {
     extraSteps.push(
       `⚠️ Tenglama juda murakkab, faqat to'g'ridan-to'g'ri almashtirish bajarildi.`,
     );
-    transformedLeft = leftSide
-      .replace(/\bx\b/g, "((z+z̄)/2)")
-      .replace(/\by\b/g, "((z-z̄)/2i)");
-    transformedRight = rightSide
-      .replace(/\bx\b/g, "((z+z̄)/2)")
-      .replace(/\by\b/g, "((z-z̄)/2i)");
+    transformedLeft = replaceVars(leftSide);
+    transformedRight = replaceVars(rightSide);
     return {
       transformed: `${transformedLeft} = ${transformedRight}`,
       simplified: `${transformedLeft} = ${transformedRight}`,
@@ -289,10 +316,8 @@ async function convertGeneric(equation: string): Promise<{
   if (isYequalsFx) {
     // y = f(x) form
     const fOfX = rightSide;
-    const fOfZ = fOfX
-      .replace(/\bx\b/g, "((z+z̄)/2)")
-      .replace(/\by\b/g, "((z-z̄)/2i)");
-    transformedLeft = "(z-z̄)/(2i)";
+    const fOfZ = replaceVars(fOfX);
+    transformedLeft = "((z-z̄)/2i)";
     transformedRight = fOfZ;
     extraSteps.push(
       `y = f(x) koʻrinishida: chap tomon y → (z - z̄)/(2i)`,
@@ -302,23 +327,17 @@ async function convertGeneric(equation: string): Promise<{
   } else if (isFxEqualsY) {
     // f(x) = y form
     const fOfX = leftSide;
-    const fOfZ = fOfX
-      .replace(/\bx\b/g, "((z+z̄)/2)")
-      .replace(/\by\b/g, "((z-z̄)/2i)");
+    const fOfZ = replaceVars(fOfX);
     transformedLeft = fOfZ;
-    transformedRight = "(z-z̄)/(2i)";
+    transformedRight = "((z-z̄)/2i)";
     extraSteps.push(
       `f(x) = y koʻrinishida: oʻng tomon y → (z - z̄)/(2i)`,
       `Chap tomondagi x → (z + z̄)/2 almashtiriladi`,
     );
   } else {
     // General implicit form f(x,y) = g(x,y)
-    transformedLeft = leftSide
-      .replace(/\bx\b/g, "((z+z̄)/2)")
-      .replace(/\by\b/g, "((z-z̄)/2i)");
-    transformedRight = rightSide
-      .replace(/\bx\b/g, "((z+z̄)/2)")
-      .replace(/\by\b/g, "((z-z̄)/2i)");
+    transformedLeft = replaceVars(leftSide);
+    transformedRight = replaceVars(rightSide);
     extraSteps.push(
       `Har ikkala tomonda x → (z + z̄)/2 va y → (z - z̄)/(2i) almashtiriladi`,
       `Chap tomon: ${leftSide} → ${transformedLeft}`,
@@ -329,6 +348,12 @@ async function convertGeneric(equation: string): Promise<{
   // Pre-expand squares so mathjs can simplify them nicely
   const expandSquares = (expr: string) => {
     let res = expr;
+    // Handle xy products quickly to avoid mathjs fraction issues
+    res = res.replace(/\(\(z\+z̄\)\/2\)\(\(z\-z̄\)\/2i\)/g, "((z^2 - z̄^2)/(4i))");
+    res = res.replace(/\(\(z\+z̄\)\/2\)\*\(\(z\-z̄\)\/2i\)/g, "((z^2 - z̄^2)/(4i))");
+    res = res.replace(/\(\(z\-z̄\)\/2i\)\(\(z\+z̄\)\/2\)/g, "((z^2 - z̄^2)/(4i))");
+    res = res.replace(/\(\(z\-z̄\)\/2i\)\*\(\(z\+z̄\)\/2\)/g, "((z^2 - z̄^2)/(4i))");
+
     // Handle ((z+z̄)/2)^2 WITH SPACES OR WITHOUT
     res = res.replace(
       /\(\(\(?\s*z\s*\+\s*z̄\s*\)?\)\s*\/\s*2\s*\)\^2/g,
