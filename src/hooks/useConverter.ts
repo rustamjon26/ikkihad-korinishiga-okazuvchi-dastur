@@ -1,4 +1,4 @@
-import { useState } from "react";
+  import { useState } from "react";
 
 export interface ConversionResult {
   originalEquation: string;
@@ -354,25 +354,34 @@ async function convertGeneric(equation: string): Promise<{
     res = res.replace(/\(\(z\-z̄\)\/2i\)\(\(z\+z̄\)\/2\)/g, "((z^2 - z̄^2)/(4i))");
     res = res.replace(/\(\(z\-z̄\)\/2i\)\*\(\(z\+z̄\)\/2\)/g, "((z^2 - z̄^2)/(4i))");
 
-    // Handle ((z+z̄)/2)^2 WITH SPACES OR WITHOUT
+    // Handle ((z+z̄)/2)^2
     res = res.replace(
-      /\(\(\(?\s*z\s*\+\s*z̄\s*\)?\)\s*\/\s*2\s*\)\^2/g,
+      /\(\(z\+z̄\)\/2\)\^2/g,
       "((z^2 + 2*z*z̄ + z̄^2)/4)",
     );
-    // Handle ((z-z̄)/(2i))^2 OR ((z-z̄)/2i)^2 WITH SPACES OR WITHOUT
+    // Handle ((z-z̄)/(2i))^2 OR ((z-z̄)/2i)^2
     res = res.replace(
-      /\(\(\(?\s*z\s*\-\s*z̄\s*\)?\)\s*\/\s*\(\s*2i\s*\)\s*\)\^2/g,
+      /\(\(z-z̄\)\/\(2i\)\)\^2/g,
       "((z^2 - 2*z*z̄ + z̄^2)/-4)",
     );
     res = res.replace(
-      /\(\(\(?\s*z\s*\-\s*z̄\s*\)?\)\s*\/\s*2i\s*\)\^2/g,
+      /\(\(z-z̄\)\/2i\)\^2/g,
       "((z^2 - 2*z*z̄ + z̄^2)/-4)",
     );
     return res;
   };
 
+  const preExpandRight = transformedRight;
+  const preExpandLeft = transformedLeft;
   transformedLeft = expandSquares(transformedLeft);
   transformedRight = expandSquares(transformedRight);
+
+  // Add an expansion step if expandSquares actually changed the expression
+  if (transformedRight !== preExpandRight) {
+    extraSteps.push(`📐 Koʼpaytma ochamiz: ${preExpandRight} → ${transformedRight}`);
+  } else if (transformedLeft !== preExpandLeft) {
+    extraSteps.push(`📐 Koʼpaytma ochamiz: ${preExpandLeft} → ${transformedLeft}`);
+  }
 
   const transformed = `${transformedLeft} = ${transformedRight}`;
 
@@ -395,7 +404,10 @@ async function convertGeneric(equation: string): Promise<{
       .replace(/\* i/g, "i")
       .replace(/i \*/g, "i*");
 
-    simplified = `${simplifiedLeft} = ${simplifiedRight}`;
+    // Preserve canonical (z-z̄)/2i form — do not let mathjs rewrite it
+    const finalLeft = isYequalsFx ? transformedLeft : simplifiedLeft;
+    const finalRight = isFxEqualsY ? transformedRight : simplifiedRight;
+    simplified = `${finalLeft} = ${finalRight}`;
 
     if (
       simplified !== transformed &&
@@ -496,3 +508,4 @@ export const useConverter = () => {
 
   return { convertEquation, loading, error };
 };
+
