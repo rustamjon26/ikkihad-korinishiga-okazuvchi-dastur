@@ -1,4 +1,4 @@
-  import { useState } from "react";
+import { useState } from "react";
 
 export interface ConversionResult {
   originalEquation: string;
@@ -20,34 +20,11 @@ async function getMath() {
 
 // Try simplification with mathjs rules safely
 async function trySimplify(expr: string): Promise<string> {
-  // Prevent freezing on very long mathematical strings
   if (expr.length > 500) {
     return expr;
   }
-
   try {
     const math = await getMath();
-
-    // We try to use math.rationalize if available for polynomial expansion
-    if (typeof (math as any).rationalize === "function") {
-      try {
-        const expanded = (math as any).rationalize(expr, {}, true).toString();
-
-        // rationalize might return a weird object if it fails, or it might succeed
-        if (
-          typeof expanded === "string" &&
-          !expanded.includes("[object") &&
-          expanded.length < expr.length * 3
-        ) {
-          // Apply simplify to the rationalized form for cleaner results
-          const simplifiedNode = math.simplify(math.parse(expanded));
-          return simplifiedNode.toString();
-        }
-      } catch (e) {
-        // ignore rationalize errors
-      }
-    }
-
     const node = math.parse(expr);
     const simplified = math.simplify(node);
     return simplified.toString();
@@ -144,10 +121,22 @@ function detectEquationType(eq: string): {
   };
 }
 
-// Normalize equation input
+const MATHJS_FUNC_NAMES = [
+  "sin",
+  "cos",
+  "tan",
+  "exp",
+  "log",
+  "sqrt",
+  "ln",
+  "asin",
+  "acos",
+  "atan",
+] as const;
+
+// Normalize equation input for mathjs.parse (implicit multiply), without breaking sin(/cos(/tan( etc.
 function normalizeInput(eq: string): string {
   let result = eq.trim();
-  // Replace ^ with ** for mathjs if needed
   // Handle implicit multiplication: 2x -> 2*x, ax -> a*x
   result = result.replace(/(\d)([a-zA-Z])/g, "$1*$2");
   result = result.replace(/(\d)\(/g, "$1*(");
@@ -155,8 +144,20 @@ function normalizeInput(eq: string): string {
   result = result.replace(/\)\(/g, ")*(");
   // Handle )(x -> )*(x
   result = result.replace(/\)([a-zA-Z])/g, ")*$1");
-  // Handle x( -> x*(
-  result = result.replace(/([a-zA-Z])\(/g, "$1*(");
+  // x(y+1) -> x*(y+1), but NOT sin(y) / cos(y) — those need letter+( without * before (
+  result = result.replace(/([a-zA-Z])\(/g, (full, letter, offset, str) => {
+    const i = offset as number;
+    for (const fname of MATHJS_FUNC_NAMES) {
+      const n = fname.length;
+      if (i >= n - 1) {
+        const chunk = str.slice(i - n + 1, i + 2);
+        if (chunk.toLowerCase() === `${fname}(`) {
+          return full;
+        }
+      }
+    }
+    return `${letter}*(`;
+  });
   return result;
 }
 
@@ -345,6 +346,9 @@ async function convertGeneric(equation: string): Promise<{
     );
   }
 
+  const canonicalLeft = transformedLeft;
+  const canonicalRight = transformedRight;
+
   // Pre-expand squares so mathjs can simplify them nicely
   const expandSquares = (expr: string) => {
     let res = expr;
@@ -368,6 +372,40 @@ async function convertGeneric(equation: string): Promise<{
       /\(\(z-z̄\)\/2i\)\^2/g,
       "((z^2 - 2*z*z̄ + z̄^2)/-4)",
     );
+
+    // ((z+z̄)/2)^3
+    res = res.replace(
+      /\(\(z\+z̄\)\/2\)\^3/g,
+      "((z^3 + 3*z^2*z̄ + 3*z*z̄^2 + z̄^3)/8)",
+    );
+    // ((z-z̄)/2i)^3
+    res = res.replace(
+      /\(\(z-z̄\)\/2i\)\^3/g,
+      "((z^3 - 3*z^2*z̄ + 3*z*z̄^2 - z̄^3)/(-8*i))",
+    );
+    // ((z+z̄)/2)^4
+    res = res.replace(
+      /\(\(z\+z̄\)\/2\)\^4/g,
+      "((z^4 + 4*z^3*z̄ + 6*z^2*z̄^2 + 4*z*z̄^3 + z̄^4)/16)",
+    );
+    // ((z-z̄)/2i)^4
+    res = res.replace(
+      /\(\(z-z̄\)\/2i\)\^4/g,
+      "((z^4 - 4*z^3*z̄ + 6*z^2*z̄^2 - 4*z*z̄^3 + z̄^4)/16)",
+    );
+
+    // General fallback: ((z+z̄)/2)^n → (z+z̄)^n / 2^n
+    res = res.replace(
+      /\(\(z\+z̄\)\/2\)\^(\d+)/g,
+      (_, n) => `((z+z̄)^${n}/${Math.pow(2, Number(n))})`,
+    );
+    // ((z-z̄)/2i)^n → (z-z̄)^n / (2i)^n
+    res = res.replace(
+      /\(\(z-z̄\)\/2i\)\^(\d+)/g,
+      (_, n) =>
+        `((z-z̄)^${n}/(${Math.pow(2, Number(n))}*i^${n}))`,
+    );
+
     return res;
   };
 
@@ -405,13 +443,13 @@ async function convertGeneric(equation: string): Promise<{
       .replace(/i \*/g, "i*");
 
     // Preserve canonical (z-z̄)/2i form — do not let mathjs rewrite it
-    const finalLeft = isYequalsFx ? transformedLeft : simplifiedLeft;
-    const finalRight = isFxEqualsY ? transformedRight : simplifiedRight;
+    const finalLeft = isYequalsFx ? canonicalLeft : simplifiedLeft;
+    const finalRight = isFxEqualsY ? canonicalRight : simplifiedRight;
     simplified = `${finalLeft} = ${finalRight}`;
 
     if (
       simplified !== transformed &&
-      simplified.length < transformed.length * 1.5
+      simplified.length < transformed.length * 4
     ) {
       extraSteps.push(`Soddalashtiramiz: ${simplified}`);
     } else {
