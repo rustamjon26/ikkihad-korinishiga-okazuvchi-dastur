@@ -20,18 +20,47 @@ async function getMath() {
 
 // Try simplification with mathjs rules safely
 async function trySimplify(expr: string): Promise<string> {
-  if (expr.length > 500) {
-    return expr;
-  }
+  if (expr.length > 500) return expr;
+  // Skip if expression contains `i` as a standalone token — mathjs treats
+  // it as imaginary unit and rationalizes it, flipping apparent signs.
+  if (/\bi\b/.test(expr)) return expr;
   try {
     const math = await getMath();
-    const node = math.parse(expr);
-    const simplified = math.simplify(node);
+    const simplified = math.simplify(math.parse(expr));
     return simplified.toString();
   } catch {
     return expr;
   }
 }
+
+const expandSquares = (expr: string) => {
+  let res = expr;
+
+  // --- xy cross products ---
+  res = res.replace(/\(\(z\+z̄\)\/2\)\(\(z\-z̄\)\/2i\)/g, "((z^2 - z̄^2)/(4i))");
+  res = res.replace(/\(\(z\+z̄\)\/2\)\*\(\(z\-z̄\)\/2i\)/g, "((z^2 - z̄^2)/(4i))");
+  res = res.replace(/\(\(z\-z̄\)\/2i\)\(\(z\+z̄\)\/2\)/g, "((z^2 - z̄^2)/(4i))");
+  res = res.replace(/\(\(z\-z̄\)\/2i\)\*\(\(z\+z̄\)\/2\)/g, "((z^2 - z̄^2)/(4i))");
+
+  // --- x-side powers: ((z+z̄)/2)^n — compact (z+z̄)^n / 2^n, no full binomial ---
+  res = res.replace(
+    /\(\(z\+z̄\)\/2\)\^(\d+)/g,
+    (_, n) => `((z+z̄)^${n}/${Math.pow(2, Number(n))})`,
+  );
+
+  // --- y-side powers: ((z-z̄)/2i)^n — even powers only (compact forms) ---
+  // Odd powers leave imaginary denominator; skip those.
+  // ^2: (2i)^2 = -4
+  res = res.replace(/\(\(z\-z̄\)\/\(2i\)\)\^2/g, "((z-z̄)^2/(-4))");
+  res = res.replace(/\(\(z\-z̄\)\/2i\)\^2/g, "((z-z̄)^2/(-4))");
+  // ^4: (2i)^4 = 16
+  res = res.replace(/\(\(z\-z̄\)\/\(2i\)\)\^4/g, "((z-z̄)^4/16)");
+  res = res.replace(/\(\(z\-z̄\)\/2i\)\^4/g, "((z-z̄)^4/16)");
+
+  // Do NOT add ^3 or ^5 for y-side — those have (2i)^odd = imaginary denominator.
+
+  return res;
+};
 
 // Detect equation type
 function detectEquationType(eq: string): {
@@ -159,6 +188,34 @@ function normalizeInput(eq: string): string {
     return `${letter}*(`;
   });
   return result;
+}
+
+/** Readable imaginary unit: 8 * i → 8i; (qatorlarni buzmasdan, faqat son * i) */
+function prettifyImaginaryInExpr(s: string): string {
+  return s
+    .replace(/\(\s*(-?\d+)\s*\*\s*i\s*\)/g, "($1i)")
+    .replace(/(^|[^\d.])(-?\d+)\s*\*\s*i\b/g, "$1$2i");
+}
+
+/**
+ * Chiqish matnini darslikdagi konventsiyaga yaqinlashtiramiz: (z+z̄)/2, (z-z̄)/(2i).
+ * mathjs ba'zan (z - z̄) / 2 / i ko‘rsatadi — bu ham ayni (z-z̄)/(2i) ma'nosi.
+ */
+function toDisplayNotation(s: string): string {
+  let out = prettifyImaginaryInExpr(s);
+
+  out = out.replace(
+    /\(\s*z\s*-\s*z̄\s*\)\s*\/\s*\(\s*2\s*\*\s*i\s*\)/g,
+    "(z-z̄)/(2i)",
+  );
+  out = out.replace(/\(\s*z\s*-\s*z̄\s*\)\s*\/\s*2\s*\/\s*i\b/g, "(z-z̄)/(2i)");
+
+  out = out.replace(/\(\(z\+z̄\)\/2\)/g, "(z+z̄)/2");
+  out = out.replace(/\(\(z-z̄\)\/2i\)/g, "(z-z̄)/(2i)");
+
+  out = out.replace(/\(\s*z\s*\+\s*z̄\s*\)\s*\/\s*2\b/g, "(z+z̄)/2");
+
+  return out;
 }
 
 // Perform algebraic substitution and simplification for well-known canonical forms
@@ -307,9 +364,10 @@ async function convertGeneric(equation: string): Promise<{
     );
     transformedLeft = replaceVars(leftSide);
     transformedRight = replaceVars(rightSide);
+    const raw = `${transformedLeft} = ${transformedRight}`;
     return {
-      transformed: `${transformedLeft} = ${transformedRight}`,
-      simplified: `${transformedLeft} = ${transformedRight}`,
+      transformed: toDisplayNotation(raw),
+      simplified: toDisplayNotation(raw),
       extraSteps,
     };
   }
@@ -350,65 +408,6 @@ async function convertGeneric(equation: string): Promise<{
   const canonicalRight = transformedRight;
 
   // Pre-expand squares so mathjs can simplify them nicely
-  const expandSquares = (expr: string) => {
-    let res = expr;
-    // Handle xy products quickly to avoid mathjs fraction issues
-    res = res.replace(/\(\(z\+z̄\)\/2\)\(\(z\-z̄\)\/2i\)/g, "((z^2 - z̄^2)/(4i))");
-    res = res.replace(/\(\(z\+z̄\)\/2\)\*\(\(z\-z̄\)\/2i\)/g, "((z^2 - z̄^2)/(4i))");
-    res = res.replace(/\(\(z\-z̄\)\/2i\)\(\(z\+z̄\)\/2\)/g, "((z^2 - z̄^2)/(4i))");
-    res = res.replace(/\(\(z\-z̄\)\/2i\)\*\(\(z\+z̄\)\/2\)/g, "((z^2 - z̄^2)/(4i))");
-
-    // Handle ((z+z̄)/2)^2
-    res = res.replace(
-      /\(\(z\+z̄\)\/2\)\^2/g,
-      "((z^2 + 2*z*z̄ + z̄^2)/4)",
-    );
-    // Handle ((z-z̄)/(2i))^2 OR ((z-z̄)/2i)^2
-    res = res.replace(
-      /\(\(z-z̄\)\/\(2i\)\)\^2/g,
-      "((z^2 - 2*z*z̄ + z̄^2)/-4)",
-    );
-    res = res.replace(
-      /\(\(z-z̄\)\/2i\)\^2/g,
-      "((z^2 - 2*z*z̄ + z̄^2)/-4)",
-    );
-
-    // ((z+z̄)/2)^3
-    res = res.replace(
-      /\(\(z\+z̄\)\/2\)\^3/g,
-      "((z^3 + 3*z^2*z̄ + 3*z*z̄^2 + z̄^3)/8)",
-    );
-    // ((z-z̄)/2i)^3
-    res = res.replace(
-      /\(\(z-z̄\)\/2i\)\^3/g,
-      "((z^3 - 3*z^2*z̄ + 3*z*z̄^2 - z̄^3)/(-8*i))",
-    );
-    // ((z+z̄)/2)^4
-    res = res.replace(
-      /\(\(z\+z̄\)\/2\)\^4/g,
-      "((z^4 + 4*z^3*z̄ + 6*z^2*z̄^2 + 4*z*z̄^3 + z̄^4)/16)",
-    );
-    // ((z-z̄)/2i)^4
-    res = res.replace(
-      /\(\(z-z̄\)\/2i\)\^4/g,
-      "((z^4 - 4*z^3*z̄ + 6*z^2*z̄^2 - 4*z*z̄^3 + z̄^4)/16)",
-    );
-
-    // General fallback: ((z+z̄)/2)^n → (z+z̄)^n / 2^n
-    res = res.replace(
-      /\(\(z\+z̄\)\/2\)\^(\d+)/g,
-      (_, n) => `((z+z̄)^${n}/${Math.pow(2, Number(n))})`,
-    );
-    // ((z-z̄)/2i)^n → (z-z̄)^n / (2i)^n
-    res = res.replace(
-      /\(\(z-z̄\)\/2i\)\^(\d+)/g,
-      (_, n) =>
-        `((z-z̄)^${n}/(${Math.pow(2, Number(n))}*i^${n}))`,
-    );
-
-    return res;
-  };
-
   const preExpandRight = transformedRight;
   const preExpandLeft = transformedLeft;
   transformedLeft = expandSquares(transformedLeft);
@@ -433,14 +432,12 @@ async function convertGeneric(equation: string): Promise<{
       transformedRight.replace(/z̄/g, "zc").replace(/2i/g, "(2*i)"),
     );
 
-    const simplifiedLeft = (await trySimplify(normalizedLeft))
-      .replace(/zc/g, "z̄")
-      .replace(/\* i/g, "i")
-      .replace(/i \*/g, "i*");
-    const simplifiedRight = (await trySimplify(normalizedRight))
-      .replace(/zc/g, "z̄")
-      .replace(/\* i/g, "i")
-      .replace(/i \*/g, "i*");
+    const simplifiedLeft = prettifyImaginaryInExpr(
+      (await trySimplify(normalizedLeft)).replace(/zc/g, "z̄"),
+    );
+    const simplifiedRight = prettifyImaginaryInExpr(
+      (await trySimplify(normalizedRight)).replace(/zc/g, "z̄"),
+    );
 
     // Preserve canonical (z-z̄)/2i form — do not let mathjs rewrite it
     const finalLeft = isYequalsFx ? canonicalLeft : simplifiedLeft;
@@ -449,7 +446,7 @@ async function convertGeneric(equation: string): Promise<{
 
     if (
       simplified !== transformed &&
-      simplified.length < transformed.length * 4
+      simplified.length < transformed.length
     ) {
       extraSteps.push(`Soddalashtiramiz: ${simplified}`);
     } else {
@@ -460,7 +457,11 @@ async function convertGeneric(equation: string): Promise<{
     // keep raw
   }
 
-  return { transformed, simplified, extraSteps };
+  return {
+    transformed: toDisplayNotation(transformed),
+    simplified: toDisplayNotation(simplified),
+    extraSteps: extraSteps.map(toDisplayNotation),
+  };
 }
 
 export const useConverter = () => {
